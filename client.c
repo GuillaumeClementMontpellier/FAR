@@ -39,9 +39,11 @@ int main(int argc, char* argv[]) // client
   while(fini==0) // tant que pas fin
   {
 
-    
+    printf("-------------- Vous allez recevoir un message --------------\n");
+        
     //Etape : recevoir la reponse (nombre d'octet) pas besoin ici
     int rep = recv(dS,msg,tailleMax,0);
+    
     if (rep < 0)
     { //gestion des erreurs
       printf("Erreur reception\n");
@@ -51,7 +53,7 @@ int main(int argc, char* argv[]) // client
       printf("Serveur deconnecte \n");
     }
 
-    printf("Vous recevez ce message : %s\n",msg);
+    printf("%s\n",msg);
     
     if (strcmp(msg,"fin")==0) // check fin
     {
@@ -61,7 +63,7 @@ int main(int argc, char* argv[]) // client
     if(fini == 0) // si le message recu n'est pas fin
     {
 
-      printf("Entrez un message à envoyer : ");
+      printf("-------------- Repondez --------------\n");
     
       fgets(msg,tailleMax,stdin);//message 1
       char *pos = strchr(msg,'\n');

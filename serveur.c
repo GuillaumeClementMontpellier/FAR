@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) // serveur
     raise(SIGINT);
   }
   
-  printf("Serveur : mon numero de port 1 est : %d \n",  ntohs(ad1.sin_port));
+  printf("Serveur : mon numero de port est : %d \n",  ntohs(ad1.sin_port));
   
   //Attendre un clients
   char* msg = (char*) malloc((tailleMax+1) * sizeof(char)); // recoit le message
@@ -206,6 +206,5 @@ int main(int argc, char* argv[]) // serveur
   printf("\n Au revoir \n");
   //Fermer
   close(dS1);
-  close(dS2);
 
 }
