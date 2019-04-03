@@ -19,6 +19,7 @@ void fin()
   //Fermer
   close(dS1);
   close(dS2);
+  exit(0);
 }
 
 
@@ -35,12 +36,12 @@ int main(int argc, char* argv[]) // serveur
   if (dS1 == -1)
   {
     printf("Serveur : probleme dans la creation de socket 1");
-    return 1;
+    raise(SIGINT);
   }
   if (dS2 == -1)
   {
     printf("Serveur : probleme dans la creation de socket 2");
-    return 1;
+    raise(SIGINT);
   }
   
   //Nommer
@@ -56,51 +57,41 @@ int main(int argc, char* argv[]) // serveur
   if (bind(dS1,(struct sockaddr*)&ad1,sizeof(ad1)) <0) //si erreur lors du bind
   {
     printf("Probleme binding le port 1\n");
-    close(dS1);
-    return 1;
+    raise(SIGINT);
   }
   if (bind(dS2,(struct sockaddr*)&ad2,sizeof(ad2)) <0) //si erreur lors du bind
   {
     printf("Probleme binding le port 2\n");
-    close(dS2);
-    return 1;
+    raise(SIGINT);
   }
 
   //Passer en mode ecoute
   if (listen(dS1,5)<0)// on limite a 5 la taille du buffer : si erreur lors du listen
   {
     printf("Serveur 1 : je suis sourd\n");
-    close(dS1);
-    return 1;
+    raise(SIGINT);
   }
   if (listen(dS2,5)<0)// on limite a 5 la taille du buffer : si erreur lors du listen
   {
     printf("Serveur 2 : je suis sourd\n");
-    close(dS2);
-    return 1;
+    raise(SIGINT);
   }
 
   socklen_t lgS1 = sizeof(struct sockaddr_in); 
   if (getsockname(dS1,(struct sockaddr*)&ad1,&lgS1)<0) // associe un port au socket ?
   {
     printf("Erreur du getsockname 1\n");
-    close(dS1);
-    return 1;
+    raise(SIGINT);
   }
   socklen_t lgS2 = sizeof(struct sockaddr_in); 
   if (getsockname(dS2,(struct sockaddr*)&ad2,&lgS2)<0) // associe un port au socket ?
   {
     printf("Erreur du getsockname 2\n");
-    close(dS2);
-    return 1;
+    raise(SIGINT);
   }
   
   printf("Serveur : mon numero de port 1 est : %d \n",  ntohs(ad1.sin_port));
   printf("Serveur : mon numero de port 2 est : %d \n",  ntohs(ad2.sin_port));
-
-  //printf("Appuyez sur Entree pour lancer le serveur\n");
-  
-  //char AttenteReponse = fgetc(stdin); // decommenter cette ligne est la precedente pour pouvoir attendre apres le lancement
   
   //Attendre un clients
   char* msg = (char*) malloc((tailleMax+1) * sizeof(char)); // recoit le message
@@ -117,7 +108,7 @@ int main(int argc, char* argv[]) // serveur
     if (dSC1 < 0)
     {//gere les erreurs
       printf("Probleme d'acceptation 1");
-      return 1;
+      raise(SIGINT);
     }
     
     printf("Client 1 connecté : %s:%d \n",inet_ntoa(aC1.sin_addr), ntohs(aC1.sin_port));
@@ -141,7 +132,7 @@ int main(int argc, char* argv[]) // serveur
     if (dSC2 < 0)
     {//gere les erreurs
       printf("Probleme d'acceptation 2");
-      return 1;
+      raise(SIGINT);
     }
     
     printf("Client 2 connecté : %s:%d \n",inet_ntoa(aC2.sin_addr), ntohs(aC2.sin_port));

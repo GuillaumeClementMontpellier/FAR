@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) // client
     if(fini == 0) // si le message recu n'est pas fin
     {
 
-      printf("Entrez un message à envoyer :");
+      printf("Entrez un message à envoyer : ");
     
       fgets(msg,tailleMax,stdin);//message 1
       char *pos = strchr(msg,'\n');
