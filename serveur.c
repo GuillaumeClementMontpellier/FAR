@@ -11,14 +11,12 @@
 //FONCTION QUI TRAITE LES CTRL+C
 
 int dS1;
-int dS2;
 
 void fin()
 {
   printf("\n Au revoir \n");
   //Fermer
   close(dS1);
-  close(dS2);
   exit(0);
 }
 
@@ -31,16 +29,10 @@ int main(int argc, char* argv[]) // serveur
   
   //Creer socket
   dS1 = socket(PF_INET,SOCK_STREAM,0); // dedoublé pour les 2 clients
-  dS2 = socket(PF_INET,SOCK_STREAM,0);
   
   if (dS1 == -1)
   {
     printf("Serveur : probleme dans la creation de socket 1");
-    raise(SIGINT);
-  }
-  if (dS2 == -1)
-  {
-    printf("Serveur : probleme dans la creation de socket 2");
     raise(SIGINT);
   }
   
@@ -49,19 +41,10 @@ int main(int argc, char* argv[]) // serveur
   ad1.sin_family = AF_INET;
   ad1.sin_addr.s_addr = INADDR_ANY;
   ad1.sin_port = htons(0);
-  struct sockaddr_in ad2;
-  ad2.sin_family = AF_INET;
-  ad2.sin_addr.s_addr = INADDR_ANY;
-  ad2.sin_port = htons(0);
   
   if (bind(dS1,(struct sockaddr*)&ad1,sizeof(ad1)) <0) //si erreur lors du bind
   {
     printf("Probleme binding le port 1\n");
-    raise(SIGINT);
-  }
-  if (bind(dS2,(struct sockaddr*)&ad2,sizeof(ad2)) <0) //si erreur lors du bind
-  {
-    printf("Probleme binding le port 2\n");
     raise(SIGINT);
   }
 
@@ -71,11 +54,6 @@ int main(int argc, char* argv[]) // serveur
     printf("Serveur 1 : je suis sourd\n");
     raise(SIGINT);
   }
-  if (listen(dS2,5)<0)// on limite a 5 la taille du buffer : si erreur lors du listen
-  {
-    printf("Serveur 2 : je suis sourd\n");
-    raise(SIGINT);
-  }
 
   socklen_t lgS1 = sizeof(struct sockaddr_in); 
   if (getsockname(dS1,(struct sockaddr*)&ad1,&lgS1)<0) // associe un port au socket ?
@@ -83,15 +61,8 @@ int main(int argc, char* argv[]) // serveur
     printf("Erreur du getsockname 1\n");
     raise(SIGINT);
   }
-  socklen_t lgS2 = sizeof(struct sockaddr_in); 
-  if (getsockname(dS2,(struct sockaddr*)&ad2,&lgS2)<0) // associe un port au socket ?
-  {
-    printf("Erreur du getsockname 2\n");
-    raise(SIGINT);
-  }
   
   printf("Serveur : mon numero de port 1 est : %d \n",  ntohs(ad1.sin_port));
-  printf("Serveur : mon numero de port 2 est : %d \n",  ntohs(ad2.sin_port));
   
   //Attendre un clients
   char* msg = (char*) malloc((tailleMax+1) * sizeof(char)); // recoit le message
@@ -127,7 +98,7 @@ int main(int argc, char* argv[]) // serveur
     printf("J'attend un client 2\n");
     struct sockaddr_in aC2; // adresse client
     socklen_t lg2 = sizeof(struct sockaddr_in);
-    int dSC2 = accept(dS2,(struct sockaddr*)&aC2,&lg2); // accepter la connexion client
+    int dSC2 = accept(dS1,(struct sockaddr*)&aC2,&lg2); // accepter la connexion client
     
     if (dSC2 < 0)
     {//gere les erreurs
