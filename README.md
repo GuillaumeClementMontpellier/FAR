@@ -1,7 +1,7 @@
 # FAR #
 Projet FAR : messagerie instantanee
 
-## Iteration 1: ##
+## Iteration 1: 
 
 Un client essaie de se connecter a un serveur, puis il passe dans une boucle : il attend/recoit un message, puis l'utilisateur saisie une chaine de char, le client envoie cette chaine de char, et recommence la boucle. La maniere de sortir de cette boucle est de recevoir ou d'entrer 'fin'.
 
@@ -24,7 +24,7 @@ Lorsque un client envoie 'fin', ce client se deconnecte juste apres. Le serveur 
 
 Le serveur intercepte le signal ctrl+c (SIGINT) afin de fermer les sockets aavant de se terminer.
 
-## Iteration 2: ##
+## Iteration 2: 
 
 Le serveur et le client ont ete changé pour respecter l'intitulé.
 
