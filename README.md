@@ -1,7 +1,7 @@
 # FAR
 Projet FAR : messagerie instantanee
 
-Iteration 1:
+## Iteration 1:
 
 Un client essaie de se connecter a un serveur, puis il passe dans une boucle : il attend/recoit un message, puis l'utilisateur saisie une chaine de char, le client envoie cette chaine de char, et recommence la boucle. La maniere de sortir de cette boucle est de recevoir ou d'entrer 'fin'.
 
@@ -22,4 +22,15 @@ Cette boucle s'arrete quand un des clients se deconnecte (ce qui est reperé qua
 
 Lorsque un client envoie 'fin', ce client se deconnecte juste apres. Le serveur relai juste le message sans se soucier du contenu, donc l'autre client recoit 'fin'. Il se deconnecte donc aussi sans rien renvoyer, donc le recv du serveur renvoie bien 0, ce qui cause la sortie de la boucle d'envoi receptoin, et donc l'attente de 2 clients.
 
-Iteration 2 :
+Le serveur intercepte le signal ctrl+c (SIGINT) afin de fermer les sockets aavant de se terminer.
+
+## Iteration 2 :
+
+Le serveur et le client ont ete changé pour respecter l'intitulé.
+
+Pour le client, l'envoie et la reception ont ete mise dans des fonctions pour pouvoir etre utilise en thread.
+
+Pour le serveur, la transmission dans chaque dend ont été mise dans des fonctions pour pouvoir utiliser des thread.
+
+Les clients s'arrete en lançant un signal SIGUSR1, qui lance une fonction qui ferme les sockets puis arrete le programme.
+

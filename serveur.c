@@ -118,7 +118,7 @@ void *c2v1()
   return 0;
 }
 
-void fin() //FONCTION QUI TRAITE LES CTRL+C
+void fin1() //FONCTION QUI TRAITE LES CTRL+C
 {
   printf("\n Au revoir \n");
   //Fermer
@@ -126,10 +126,20 @@ void fin() //FONCTION QUI TRAITE LES CTRL+C
   exit(0);
 }
 
+void fin2() //FONCTION QUI TRAITE LES CTRL+C
+{
+  printf("\n Au revoir \n");
+  //Fermer
+  close(dS1);
+close(dSC1);
+close(dSC2);
+  exit(0);
+}
+
 
 int main(int argc, char* argv[]) // serveur
 {  
-  signal(SIGINT,fin);
+  signal(SIGINT,fin1);
   
   tailleMax = 2000;
   
@@ -205,6 +215,7 @@ int main(int argc, char* argv[]) // serveur
     
     printf("Client 2 connecté : %s:%d \n",inet_ntoa(aC2.sin_addr), ntohs(aC2.sin_port));
 
+    signal(SIGINT,fin2); // pour fermer les dSC
     // FAIRE LES PTHREAD
     pthread_t tc1v2;
     pthread_t tc2v1;
@@ -223,6 +234,8 @@ int main(int argc, char* argv[]) // serveur
     close(dSC1);  
     printf("Fermeture du dialogue avec le client 2\n");
     close(dSC2);
+
+    signal(SIGINT,fin1);
     
   }
 
