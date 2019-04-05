@@ -52,10 +52,8 @@ void *envoyer()
   msg[0]='\0';
   
   while(1)
-  {
-    printf("-------------- Repondez --------------\n");
-    
-    fgets(msg,tailleMax,stdin);//message 1
+  { 
+    fgets(msg,tailleMax,stdin); //message 1
     char *pos = strchr(msg,'\n');
     *pos = '\0';
     
@@ -102,6 +100,8 @@ int main(int argc, char* argv[]) // client
   connect(dS,(struct sockaddr *)&ad,lgA);
   
   //Communiquer
+
+  printf("Bienvenue dans cette messagerie\n");
 
   //Separer la lecture et l'ecriture en fonction, puis les appeler en thread => plus de 'fini' => signal pour finir
   
