@@ -30,7 +30,7 @@ Le serveur et le client ont ete changé pour respecter l'intitulé.
 
 Pour le client, l'envoie et la reception ont ete mise dans des fonctions pour pouvoir etre utilise en thread.
 
-Pour le serveur, la transmission dans chaque dend ont été mise dans des fonctions pour pouvoir utiliser des thread.
+Pour le serveur, la transmission dans chaque sens ont été mise dans des fonctions pour pouvoir utiliser des thread.
 
 Les clients s'arrete en lançant un signal SIGUSR1, qui lance une fonction qui ferme les sockets puis arrete le programme.
 
