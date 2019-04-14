@@ -24,7 +24,7 @@ Lorsque un client envoie 'fin', ce client se deconnecte juste apres. Le serveur 
 
 Le serveur intercepte le signal ctrl+c (SIGINT) afin de fermer les sockets aavant de se terminer.
 
-## Iteration 2: 
+## Iteration 2:
 
 Le serveur et le client ont ete changé pour respecter l'intitulé.
 
