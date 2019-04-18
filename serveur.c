@@ -11,37 +11,134 @@
 
  // Besoin de -pthread pour compiler
 
+ // mutex pour les changement de la liste de client ?
+
 int dS1;
-int dSC1;
-int dSC2;
+struct sockaddr_in ad1;
 
 int tailleMax;
 
-void *c1v2()
+int id;
+
+struct client
 {
+  int dSC;
+  int id;
+  struct sockaddr_in aC;
+  socklen_t lg;
+  struct client *pere;
+  struct client *fils;
+    
+  pthread_t thread;
+  
+} *c = NULL; // c est la tete de liste, et correspond à un client pas encore connecte
+
+struct client *ajouteClientViergeDebut(struct client *c1)
+{
+  /*  Prend un pointeur vers un client c (qui est le debut de la liste),
+      Crée un nouveau client c2 (malloc),
+      le chaine avant le client c, 
+      et renvoie l'adresse du nouveau client
+   */
+
+  struct client *c2 = (struct client*) malloc(sizeof(struct client));
+
+  c2->dSC = -1;
+  c2->id = id;
+  c2->lg = sizeof(struct sockaddr_in);
+  c2->fils = c1;
+  c2->pere = NULL;
+
+  if(c1 != NULL)
+  {
+    c1->pere = c2;
+  }
+
+  id++;
+
+  return c2;
+  
+}
+
+void efface(struct client *cl)
+{
+  printf("Efface client %d\n",cl->id);
+  
+  //Enleve de la liste
+  if(cl->fils != NULL)
+  {
+    cl->fils->pere = cl->pere;
+  }
+  if(cl->pere != NULL)
+  {
+    cl->pere->fils = cl->fils;
+  }
+  
+  //Close son port
+  close(cl->dSC);
+
+  //free
+  free(cl);
+}
+
+void effaceClients(struct client *cl)//efface tout les clients 1 par 1
+{
+  printf("Nettoyage\n");
+  
+  struct client *cSuivant;
+  
+  while(cl != NULL)
+  {
+    cSuivant = cl->fils;
+
+    efface(cl);
+
+    cl = cSuivant;
+  }
+  
+}
+
+void fin() //FONCTION QUI TRAITE LES CTRL+C
+{
+  //TODO : Rajouter fermer tout les dsc des clients (liste)
+  effaceClients(c);
+  
+  printf("\n Au revoir \n");
+  //Fermer
+  close(dS1);
+  exit(0);
+}
+
+void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout les autres clients, ce en boucle
+{
+
+  struct client *cActif = (struct client*)cl;
+  
   int taille;
 
   char* msg = (char*) malloc((tailleMax+1) * sizeof(char)); // recoit le message
 
   int fini = 0;
+
+  printf("Debut Thread client %d\n",cActif->id);
   
   while(fini == 0)
   {
-    taille = recv(dSC1,msg,tailleMax,0);
+    taille = recv(cActif->dSC, msg, tailleMax,0);
+    printf("recv depuis client %d\n",cActif->id);
     
     if (taille < 0)
     { //gestion des erreurs
-      printf("Reception finale du message trop long \n");
+      perror("Serveur : Thread : recv -1 ");
       fini = 1;
     }
     else if (taille == 0)
     {
-      printf("Client deconnecte : End Of Message \n");
+      perror("Serveur : Thread : recv 0 ");
       fini = 1;
     }
-    else // pas de probleme lors de la reception, on envoie au client 2
-    {
-      
+    else // pas de probleme lors de la reception, on envoie aux autres clients
+    {      
       if (taille == tailleMax) // pour etre sur d'afficher tout le message, et pas depasser
       {
 	char *pos = strchr(msg,'\0');
@@ -49,111 +146,69 @@ void *c1v2()
 	msg[tailleMax] = '\0';
       }
 
-      //renvoie au client 2
-      int rep = send(dSC2,msg,strlen(msg)+1,0);
+      //Pour chaque autre client :
+
+      struct client *cDest = c->fils;
+
+      while(cDest != NULL && fini == 0)
+      {
+
+	if(cDest->id != cActif->id)
+	{
+	  //envoie au client receveur
+	  
+	  printf("send depuis client %d vers client %d\n",cActif->id, cDest->id);
+	  int rep = send(cDest->dSC, msg, strlen(msg)+1, 0);
+	  
+	  if (rep < 0)//gestion des erreurs
+	  {
+	    perror("Serveur : thread : send -1 ");
+	    fini = 1;
+	  }
+	  else if (rep == 0)
+	  {
+	    perror("Serveur : thread : send 0 ");
+	    fini = 1;
+	  }
+	}
+
+	cDest = cDest->fils;
+
+      }
       
-      if (rep < 0)//gestion des erreurs
-      {
-	printf("Serveur : erreur lors du send de reponse : client plus disponible \n");
-	fini = 1; // client plus disponible
-      }
-      else if (rep == 0)
-      {
-	printf("Serveur : Client deconnecte avant reponse \n");
-	fini = 1;
-      }
     }
-  }
-  return 0;
-}
-
-
-void *c2v1()
-{
-  int taille;
-
-  char* msg = (char*) malloc((tailleMax+1) * sizeof(char)); // recoit le message
-
-  int fini = 0;
-  
-  while(fini == 0)
-  {
-    taille = recv(dSC2,msg,tailleMax,0);
     
-    if (taille < 0)
-    { //gestion des erreurs
-      printf("Reception finale du message trop long \n");
-      fini = 1;
-    }
-    else if (taille == 0)
-    {
-      printf("Client deconnecte : End Of Message \n");
-      fini = 1;
-    }
-    else // pas de probleme lors de la reception, on envoie au client 2
-    {
-      
-      if (taille == tailleMax) // pour etre sur d'afficher tout le message, et pas depasser
-      {
-	char *pos = strchr(msg,'\0');
-	*pos = ' ';
-	msg[tailleMax] = '\0';
-      }
-
-      //renvoie au client 2
-      int rep = send(dSC1,msg,strlen(msg)+1,0);
-      
-      if (rep < 0)//gestion des erreurs
-      {
-	printf("Serveur : erreur lors du send de reponse : client plus disponible \n");
-	fini = 1; // client plus disponible
-      }
-      else if (rep == 0)
-      {
-	printf("Serveur : Client deconnecte avant reponse \n");
-	fini = 1;
-      }
-    }
   }
+  // Fini : enlever le client de la liste, close son port puis free la memoire
+
+  efface(cActif);
+
+  free(msg);
+
+  printf("Fin thread\n");
+  
   return 0;
-}
-
-void fin1() //FONCTION QUI TRAITE LES CTRL+C
-{
-  printf("\n Au revoir \n");
-  //Fermer
-  close(dS1);
-  exit(0);
-}
-
-void fin2() //FONCTION QUI TRAITE LES CTRL+C
-{
-  printf("\n Au revoir \n");
-  //Fermer
-  close(dS1);
-close(dSC1);
-close(dSC2);
-  exit(0);
 }
 
 
 int main(int argc, char* argv[]) // serveur
 {  
-  signal(SIGINT,fin1);
+  signal(SIGINT,fin);
   
   tailleMax = 2000;
+
+  id = 0;
   
   //Creer socket
-  dS1 = socket(PF_INET,SOCK_STREAM,0); // dedoublé pour les 2 clients
+  dS1 = socket(PF_INET,SOCK_STREAM,0); 
   
   if (dS1 == -1)
   {
-    printf("Serveur : probleme dans la creation de socket 1");
+    printf("Serveur : probleme dans la creation de socket 1 ");
     raise(SIGINT);
   }
   
-  //Nommer
-  struct sockaddr_in ad1;
+  //Nommer le serveur
   ad1.sin_family = AF_INET;
   ad1.sin_addr.s_addr = INADDR_ANY;
   ad1.sin_port = htons(0);
@@ -177,65 +232,33 @@ int main(int argc, char* argv[]) // serveur
     printf("Erreur du getsockname 1\n");
     raise(SIGINT);
   }
+
+  //pour lancer le client qui cherche le bon port
   
   printf("Serveur : mon numero de port est : %d \n",  ntohs(ad1.sin_port));
   
-  //Attendre un clients
-
-  char* msg = (char*) malloc((tailleMax+1) * sizeof(char)); // recoit le message
+  //Attendre les clients
   
   while(1)
   {
-    strcpy(msg,"Vous etes client 1");
+    //crée un nouveau client au debut de la liste
+    c = ajouteClientViergeDebut(c);
     
-    printf("J'attend un client 1\n");
-    struct sockaddr_in aC1; // adresse client
-    socklen_t lg1 = sizeof(struct sockaddr_in);
-    dSC1 = accept(dS1,(struct sockaddr*)&aC1,&lg1); // accepter la connexion client
+    //attendre un nouveau client
+    printf("J'attend un client\n");
+    c->dSC = accept(dS1, (struct sockaddr*) &(c->aC), &(c->lg)); // accepter la connexion client
     
-    if (dSC1 < 0)
+    if (c->dSC < 0)
     {//gere les erreurs
-      printf("Probleme d'acceptation 1");
+      perror("Serveur : Accept ");
       raise(SIGINT);
     }
     
-    printf("Client 1 connecté : %s:%d \n",inet_ntoa(aC1.sin_addr), ntohs(aC1.sin_port));
+    printf("Client connecté : %s:%d \n",inet_ntoa(c->aC.sin_addr), ntohs(c->aC.sin_port));
 
-        
-    printf("J'attend un client 2\n");
-    struct sockaddr_in aC2; // adresse client
-    socklen_t lg2 = sizeof(struct sockaddr_in);
-    dSC2 = accept(dS1,(struct sockaddr*)&aC2,&lg2); // accepter la connexion client
+    //lance dans thread avec ce client
     
-    if (dSC2 < 0)
-    {//gere les erreurs
-      printf("Probleme d'acceptation 2");
-      raise(SIGINT);
-    }
-    
-    printf("Client 2 connecté : %s:%d \n",inet_ntoa(aC2.sin_addr), ntohs(aC2.sin_port));
-
-    signal(SIGINT,fin2); // pour fermer les dSC
-    // FAIRE LES PTHREAD
-    pthread_t tc1v2;
-    pthread_t tc2v1;
-    
-    pthread_create(&tc1v2,0,c1v2,0);
-    pthread_create(&tc2v1,0,c2v1,0);
-
-    // PTRHEAD WAIT FIN DES CLIENTS !!
-    
-    pthread_join(tc1v2,0);
-    pthread_join(tc2v1,0);
-
-    //fermeture socket client
-    
-    printf("Fermeture du dialogue avec le client 1\n");
-    close(dSC1);  
-    printf("Fermeture du dialogue avec le client 2\n");
-    close(dSC2);
-
-    signal(SIGINT,fin1);
+    pthread_create(&(c->thread),0,&broadcast,(void*)c);
     
   }
 
