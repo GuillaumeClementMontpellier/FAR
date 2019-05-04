@@ -3,8 +3,6 @@ Projet FAR : messagerie instantanee
 
 ### Iteration 1: 
 
-En TCP
-
 Un client essaie de se connecter a un serveur, puis il passe dans une boucle : il attend/recoit un message, puis l'utilisateur saisie une chaine de char, le client envoie cette chaine de char, et recommence la boucle. La maniere de sortir de cette boucle est de recevoir ou d'entrer 'fin'.
 
 Le serveur commence a se mettre en attente de connexion : il attend 2 clients.
@@ -36,22 +34,3 @@ Pour le serveur, la transmission dans chaque sens ont été mise dans des foncti
 
 Les clients s'arrete en lançant un signal SIGUSR1, qui lance une fonction qui ferme les sockets puis arrete le programme.
 
-### Iteration 3 :
-
-Le trasfert le fait en UDP.
-
-Le client exp fait 'file' : il precise ensuite le pseudo du client auquel il veut envoyer le fichier.
-
-Le serveur envoie un message au client dest d'ouvrir un port udp.
-
-Le client dest dit au serveur son port, et le serveur le transmet a l'expediteur, ainsi qui l'ip.
-
-Le client exp choisi un fichier à envoyer, l'ouvre et l'envoie au client dest dans un nouveau thread.
-
-4 envois :
-  Taille Nom Fichier
-  Nom Fichier
-  Taille Fichier
-  Fichier
-
-Le client dest les recoit et reconstruit le fichier.

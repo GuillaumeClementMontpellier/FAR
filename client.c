@@ -10,6 +10,7 @@
 #include <signal.h>
 #include <dirent.h>
 #include <limits.h>
+#include <sys/stat.h>
 
 //a besoin de -pthread pour compiler
 
@@ -17,39 +18,54 @@ int dS; // descripteur de socket du serveur
 
 struct sockaddr_in ad;
 
+int dSRec; //descripteur pour reception (en UDP) => besoin de bind, même addr que dS
+
+struct sockaddr_in adUDP;
+
 int tailleMax; // taille max des messages pour fgets
 
-char* pseudo;
+char *pseudo;
 
-void *recevoir_file(void * dSS)
+void *recevoir_file()
 {
-  int dSRec = *((int *) dSS);
+  printf("Debut reception file\n");
   
   // Recoit Taille Nom
   int taille;
   recvfrom(dSRec,&taille,sizeof(int),0,NULL,NULL);
 
-  char *filename = (char *) malloc(taille * sizeof(char));
+  char *filename = (char *) malloc((taille+1) * sizeof(char));
 
   // Recoit Nom Fichier
   recvfrom(dSRec,filename,taille,0,NULL,NULL);
 
   // Ouvre le fichier pour ecrire
   char *filepath = (char*)malloc(tailleMax * sizeof(char));
-  strcpy(filepath,"./file/");
+  strcpy(filepath,"./fileDest/");
   strcat(filepath,filename);
   FILE *file = fopen(filepath,"wb");
 
   // Recoit Taille fichier
   int filesize;
-  recvfrom(dSRec,&filesize,sizeof(int),0,NULL,NULL);  
+  recvfrom(dSRec,&filesize,sizeof(int),0,NULL,NULL);
 
-  // Recoit fichier (et ecrit)
-  recvfrom(dSRec,file,filesize,0,NULL,NULL);
+  char * buf = (char*) malloc(filesize * sizeof(char));
+
+  // Recoit fichier (et ecrit ?)
+  recvfrom(dSRec,buf,filesize,0,NULL,NULL);
+
+  //TODO : ecrire fichier
+  printf("Reception de %s, enregistre dans %s, de taille %d\n",filename,filepath,filesize);
+
+  fwrite(buf,filesize,1,file);
   
   // Exit thread
   free(filepath);
   free(filename);
+  free(buf);
+  fclose(file);
+  
+  printf("Fin reception file\n");
 
   pthread_exit(0);
   
@@ -57,19 +73,22 @@ void *recevoir_file(void * dSS)
 
 void *envoyer_file(void * adrDest)
 {
+  //recuperer addr et allouer place pour filename et filepath
   struct sockaddr_in addrDest = *((struct sockaddr_in *) adrDest);
   
   char *filepath = (char*) malloc(tailleMax * sizeof(char));
-  strcpy(filepath,"./file/");
+  strcpy(filepath,"./fileSource/");
 
   char *filename = (char*) malloc(tailleMax * sizeof(char));  
   
   // Cree Socket UDP
   int dSEnv = socket(PF_INET,SOCK_DGRAM,0);
+  
   if (dSEnv == -1)
   {
     perror("Socket UDP ");
   }
+  
   socklen_t l = sizeof(struct sockaddr_in);
 
   // lister les fichiers disponibles
@@ -104,16 +123,29 @@ void *envoyer_file(void * adrDest)
 
   // ouvre le fichier
   FILE *file = fopen(filepath,"rb");
-
   if (file == NULL)
   {
     perror("fopen");
   }
 
   // repere la taille du fichier
-  fseek(file, 0, SEEK_END);
-  int filesize = ftell(file);
-  fseek(file, 0, SEEK_SET);
+  struct stat res;
+  stat(filepath,&res);
+  int filesize = res.st_size;
+
+  char *bufEnvoi = (char*) malloc(filesize * sizeof(char));
+  bufEnvoi[0] = '\0';
+
+  char buf[2];
+  buf[1] = '\0';
+
+  //copier le fichier dans le buffer
+  buf[0] = fgetc(file);
+  while( buf[0] != EOF)//continue tant que pas EOF
+  {
+    strcat(bufEnvoi,buf);
+    buf[0] = fgetc(file);
+  }
 
   // Envoie Taille Nom a dest
   int taille = (strlen(filename)+1);
@@ -126,11 +158,13 @@ void *envoyer_file(void * adrDest)
   sendto(dSEnv,&filesize,sizeof(int),0,(struct sockaddr *)&addrDest,l);
 
   // Envoie Fichier à dest
-  sendto(dSEnv,file,filesize,0,(struct sockaddr *)&addrDest,l);
+  sendto(dSEnv,bufEnvoi,filesize,0,(struct sockaddr *)&addrDest,l);
 
   // Exit
   free(filename);
   free(filepath);
+  free(bufEnvoi);
+  fclose(file);
 
   pthread_exit(0);
 }
@@ -145,7 +179,6 @@ void *recevoir_t()
   {
     //Etape : recevoir la reponse (nombre d'octet) pas besoin ici
     int rep = recv(dS,msg,tailleMax,0);
-    
     if (rep < 0)
     { //gestion des erreurs
       perror("Client : Recevoir : recv -1 ");
@@ -161,52 +194,12 @@ void *recevoir_t()
 
     if(strcmp(msg,"file") == 0)
     {
+      
       printf("Debut reception fichier\n");
-
-      int bon = 1;
       
-      // crée socket UDP pour reception
-      int dSRec = socket(PF_INET,SOCK_DGRAM,0);
-      if (dSRec==-1)
-      {
-	perror("Socket UDP ");
-	bon = 0;
-      }
-
-      // assigne addr rec
-      struct sockaddr_in addrUDP;
-      addrUDP.sin_family = AF_INET;
-      addrUDP.sin_addr.s_addr = INADDR_ANY;
-      addrUDP.sin_port = htons(0);
-      socklen_t l = sizeof(struct sockaddr_in);
-      if (getsockname(dSRec,(struct sockaddr*)&addrUDP, &l) < 0)
-      {
-	perror("GetSockName");
-	bon = 0;
-      }
-      if (bind(dSRec,(struct sockaddr*)&addrUDP,sizeof(addrUDP)) < 0)
-      {
-	perror("bind");
-	bon = 0;
-      }
-
-      // crée addr UDP du serveur (recopie)
-      struct sockaddr_in adServUDP;
-      adServUDP.sin_family = AF_INET;
-      adServUDP.sin_addr.s_addr = ad.sin_addr.s_addr;
-      adServUDP.sin_port = ad.sin_port;      
-      
-      if (bon == 1)
-      { // envoie num de port au serveur
-	strcpy(msg,"connexion");
-	sendto(dSRec,msg,strlen(msg)+1,0,(struct sockaddr *)&adServUDP,l);      
-      
-	// Thread pour recevoir
-	pthread_t recevoir_f;
-	pthread_create(&recevoir_f,0,recevoir_file,&dSRec);
-	pthread_join(recevoir_f,0);
-      }
-      printf("Fin reception fichier\n");
+      // Thread pour recevoir
+      pthread_t recevoir_f;
+      pthread_create(&recevoir_f,0,recevoir_file,0);
       
     }
     else //message normal
@@ -251,7 +244,6 @@ void *envoyer_t()
       // reçoit port destinataire UDP
       struct sockaddr_in addrDest;
       int rep = recv(dS, &addrDest, sizeof(struct sockaddr_in),0);
-      
       if (rep < 0)
       { //gestion des erreurs
 	perror("Client : Recevoir port : recv -1 ");
@@ -259,7 +251,9 @@ void *envoyer_t()
       else if (rep == 0)
       {
 	perror("Client : Recevoir : recv 0 ");
-      }    
+      }
+    
+      printf("Addr dest : %s : %d \n", inet_ntoa(addrDest.sin_addr), ntohs(addrDest.sin_port));
       
       if(ntohs(addrDest.sin_port) != 0) // Si 0, arrete, sinon, continue
       {
@@ -288,6 +282,8 @@ void fin ()
 int main(int argc, char* argv[]) // client
 {
   signal(SIGUSR1,fin);
+
+  int rep;
   
   if (argc < 4)
   {
@@ -301,6 +297,8 @@ int main(int argc, char* argv[]) // client
   dS = socket(PF_INET,SOCK_STREAM,0);
 
   tailleMax = 2000;
+
+  
   
   //Demander une connexion au serveur
   ad.sin_family = AF_INET;
@@ -309,13 +307,40 @@ int main(int argc, char* argv[]) // client
   inet_pton(AF_INET,argv[1],&(ad.sin_addr)); //associe l'adresse ip correspondant à la chaine de char, et la mets dans ad.sin_addr
   socklen_t lgA = sizeof(struct sockaddr_in);
   
-  connect(dS,(struct sockaddr *)&ad,lgA);
+  connect(dS,(struct sockaddr *)&ad,lgA);//TODO erreur
 
   //envoyer le pseudo au serveur
-  send(dS,pseudo,strlen(pseudo)+1,0);
+  send(dS,pseudo,strlen(pseudo)+1,0);//TODO erreur
+
+  //creer socket UDP pour rec
+
+  dSRec = socket(PF_INET,SOCK_DGRAM,0); //pas encore bind
+
+  //recevoir notre num de port a bind
+  printf("Reception Addresse (ack de conn)\n");
+  
+  rep = recv( dS, &adUDP, sizeof(struct sockaddr_in), 0); //ce recv ne marche pas ?
+  if (rep < 0)
+  { //gestion des erreurs
+    perror("Client : Recevoir : recv -1 ");
+  }
+  else if (rep == 0)
+  {
+    perror("Client : Recevoir : recv 0 ");
+  }
+  
+  printf("fin Rec Addresse\n");
+  
+  printf("Addr Recue : %s : %d \n", inet_ntoa(adUDP.sin_addr), ntohs(adUDP.sin_port));
+
+  //bind port UDP pour reception
+  if (bind(dSRec,(struct sockaddr*)&adUDP,sizeof(adUDP)) < 0)
+  {
+    perror("bind UDP");
+  }
     
   //Communiquer
-  printf("Bienvenue dans cette messagerie\n");
+  printf("Bienvenue dans cette messagerie \n");
 
   //Separer la lecture et l'ecriture en fonction, puis les appeler en thread
   
@@ -326,6 +351,7 @@ int main(int argc, char* argv[]) // client
   pthread_create(&tEnvoyer,0,envoyer_t,0);
 
   pthread_join(tRecevoir,0);
+  printf("fin thread reception : fermer prog\n");
   pthread_join(tEnvoyer,0);
   
   close(dS);

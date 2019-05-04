@@ -11,12 +11,6 @@
 
 // Besoin de -pthread pour compiler
 
-// port UPD pour le serveur a mettre pour reception
-
-int dSUDP;
-
-struct sockaddr_in addrUDP;
-
 // port TCP pour general
 
 int dS1;
@@ -148,12 +142,12 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
   
   int fini = 0;
 
-  printf("Debut Thread client %d\n",cActif->id);
+  printf("Debut Thread %s\n",cActif->pseudo);
   
   while(fini == 0)
   {
     taille = recv(cActif->dSC, msg, tailleMax,0);
-    printf("recv depuis client %d\n",cActif->id);
+    printf("recv depuis %s\n",cActif->pseudo);
     
     if (taille < 0)
     { //gestion des erreurs
@@ -168,8 +162,12 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
     else if(strcmp(msg,"file")==0)
     {
       // cas file : on attend le pseudo de la cible
-      taille = recv(cActif->dSC, msg, tailleMax,0);
+
       int rep;
+
+      printf("Debut file recv pour %s\n",cActif->pseudo);
+      
+      taille = recv(cActif->dSC, msg, tailleMax,0); // on attend un pseudo
       if (taille < 0)
       { //gestion des erreurs
 	perror("Serveur : Thread : recv -1 ");
@@ -184,20 +182,29 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
 	// On recherche s'il y a un client avec ce pseudo
 	int trouve = 0;
 	struct client *cDest = c->fils;
+
+	printf("recherche si %s existe\n",msg);
 	
 	while (cDest != NULL && trouve == 0)
         {
+	  
 	  if (strcmp(msg,cDest->pseudo)==0 && cDest->id != cActif->id)
 	  {
 	    trouve = 1;
 	  }
+
+	  if(trouve == 0)
+	  {
+	    cDest = cDest->fils;
+	  }
 	  
-	  cDest = cDest->fils;
 	}//arret while : fin de cDest ou trouve un valide
 
-	// Si pas de valide trouve (existe pas, lui-même, ...), arrete et envoie "0" a cActif
+	// Si pas de valide trouve (existe pas, lui-même, ...), arrete et envoie addr "0" a cActif
 	if (trouve == 0)
 	{
+	  printf("Pseudo pas valide\n");
+	  
 	  struct sockaddr_in addrDest;
 	  addrDest.sin_port = htons(0);
 	  
@@ -214,6 +221,9 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
 	}
 	else  
 	{ // Si valide, envoie "file" a cDest
+
+	  printf("Pseudo valide, envoie de \"file\" a %s\n",cDest->pseudo);
+	  
 	  strcpy(msg,"file");
 	  
 	  rep = send(cDest->dSC, msg, strlen(msg)+1, 0);
@@ -226,13 +236,16 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
 	    perror("Serveur : thread : send 0 ");
 	  }
 	  
-	  // Attend le port UDP de ce client (juste besoin de recevoir un message UDP) TODO recvfrom
-	  struct sockaddr_in addrDest;
-	  socklen_t lgAddr = sizeof(struct sockaddr_in);
-	  recvfrom(dSUDP,msg,tailleMax,0,(struct sockaddr*)&addrDest,&lgAddr); // initialise addrDest a l'adresse/port du dest
 
-	  // le transmet a cActif (sockaddr_in)
-	  rep = send(cActif->dSC,&addrDest,sizeof(struct sockaddr_in),0);
+	  // Transmet coord cDest a cActif (sockaddr_in)
+	  printf("Envoie addr de %s a %s\n",cDest->pseudo, cActif->pseudo);
+
+	  struct sockaddr_in adC = cDest->aC;
+	  
+	  printf("Addr : %s : %d \n", inet_ntoa(adC.sin_addr), ntohs(adC.sin_port));
+	  
+	  rep = send( cActif->dSC, &adC, sizeof(struct sockaddr_in), 0);
+	  
 	  if (rep < 0)//gestion des erreurs
 	  {
 	    perror("Serveur : thread : send -1 ");
@@ -242,7 +255,11 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
 	    perror("Serveur : thread : send 0 ");
 	  }
 
-	  // fini
+	  printf("rep = %d\n",rep);
+
+	  //fini
+
+	  printf("Fin file : rep = %d\n",rep);
 	  
 	}
       }
@@ -272,7 +289,7 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
 	{
 	  //envoie au client receveur
 	  
-	  printf("send depuis client %d vers client %d\n",cActif->id, cDest->id);
+	  printf("send depuis %s vers %s\n",cActif->pseudo, cDest->pseudo);
 	  int rep = send(cDest->dSC, buf, strlen(buf)+1, 0);
 	  
 	  if (rep < 0)//gestion des erreurs
@@ -351,23 +368,11 @@ int main(int argc, char* argv[]) // serveur
     raise(SIGINT);
   }
 
-  // socket UDP INIT
-  dSUDP = socket(PF_INET,SOCK_DGRAM,0);
-  if (dSUDP == -1)
-  {
-    perror("Serveur : socket UDP ");
-    raise(SIGINT);
-  }
-  
-  // nommer
-  addrUDP.sin_family = AF_INET;
-  addrUDP.sin_addr.s_addr = ad1.sin_addr.s_addr;
-  addrUDP.sin_port = ad1.sin_port;
-  bind(dSUDP,(struct sockaddr*)&addrUDP,sizeof(addrUDP));
-
   //pour lancer le client avec le bon port
   
   printf("Serveur : mon numero de port est : %d \n",  ntohs(ad1.sin_port));
+
+  int rep;
   
   //Attendre les clients
   
@@ -403,11 +408,22 @@ int main(int argc, char* argv[]) // serveur
     {
       perror("Serveur : Pseudo : recv 0 ");
     }
-    
 
-    //affichage connexion
-    
-    printf("%s connecté : %s:%d \n",c->pseudo ,inet_ntoa(c->aC.sin_addr), ntohs(c->aC.sin_port));
+    //envoie le port du dest au dest (pour ouvrir le bon UDP)
+    printf("Envoie addr de %s a lui même\n",c->pseudo );
+	  
+    printf("Addresse : %s : %d \n", inet_ntoa(c->aC.sin_addr), ntohs(c->aC.sin_port));
+	  
+    rep = send( c->dSC, &(c->aC), sizeof(struct sockaddr_in), 0); // ce send ne marche pas ?
+	  
+    if (rep < 0)//gestion des erreurs
+    {
+      perror("Serveur : thread : send -1 ");
+    }
+    else if (rep == 0)
+    {
+      perror("Serveur : thread : send 0 ");
+    }
 
     //lance dans thread avec ce client
     
