@@ -103,7 +103,7 @@ void efface(struct client *cl)
 
 void effaceClients(struct client *cl)//efface tout les clients 1 par 1
 {
-  printf("Nettoyage\n");
+  printf("Nettoyage de tout les clients\n");
   
   struct client *cSuivant;
   
@@ -120,10 +120,10 @@ void effaceClients(struct client *cl)//efface tout les clients 1 par 1
 
 void fin() //FONCTION QUI TRAITE LES CTRL+C
 {
+  printf("\n Au revoir \n");
+  
   // Fermer tout les dsc des clients (liste)
   effaceClients(c);
-  
-  printf("\n Au revoir \n");
   
   // Fermer le serveur
   close(dS1);
@@ -159,7 +159,7 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
       perror("Serveur : Thread : recv 0 ");
       fini = 1;
     }
-    else if(strcmp(msg,"file")==0)
+    else if(strcmp(msg,"file")==0) // file ou mess normal ? ici, file
     {
       // cas file : on attend le pseudo de la cible
 
@@ -234,18 +234,16 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
 	  else if (rep == 0)
 	  {
 	    perror("Serveur : thread : send 0 ");
-	  }
-	  
+	  }	  
 
 	  // Transmet coord cDest a cActif (sockaddr_in)
 	  printf("Envoie addr de %s a %s\n",cDest->pseudo, cActif->pseudo);
 
 	  struct sockaddr_in adC = cDest->aC;
 	  
-	  printf("Addr : %s : %d \n", inet_ntoa(adC.sin_addr), ntohs(adC.sin_port));
+	  printf("Addr = %s : %d \n", inet_ntoa(adC.sin_addr), ntohs(adC.sin_port));
 	  
 	  rep = send( cActif->dSC, &adC, sizeof(struct sockaddr_in), 0);
-	  
 	  if (rep < 0)//gestion des erreurs
 	  {
 	    perror("Serveur : thread : send -1 ");
@@ -255,11 +253,7 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
 	    perror("Serveur : thread : send 0 ");
 	  }
 
-	  printf("rep = %d\n",rep);
-
-	  //fini
-
-	  printf("Fin file : rep = %d\n",rep);
+	  //fin du role du serveur dans l'envoi de fichier
 	  
 	}
       }
@@ -291,7 +285,6 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
 	  
 	  printf("send depuis %s vers %s\n",cActif->pseudo, cDest->pseudo);
 	  int rep = send(cDest->dSC, buf, strlen(buf)+1, 0);
-	  
 	  if (rep < 0)//gestion des erreurs
 	  {
 	    perror("Serveur : thread : send -1 ");
@@ -311,7 +304,7 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
     }
     
   }
-  // Fini : enlever le client de la liste, close son port puis free la memoire
+  // Fini : enlever le client de la liste, ferme son port (dans efface()) puis free la memoire
   
   efface(cActif);
 
@@ -357,14 +350,14 @@ int main(int argc, char* argv[]) // serveur
   //Passer en mode ecoute
   if (listen(dS1,5)<0)// on limite a 5 la taille du buffer : si erreur lors du listen
   {
-    printf("Serveur 1 : je suis sourd\n");
+    printf("Serveur : je suis sourd\n");
     raise(SIGINT);
   }
 
   socklen_t lgS1 = sizeof(struct sockaddr_in); 
   if (getsockname(dS1,(struct sockaddr*)&ad1,&lgS1)<0) // associe un port au socket ?
   {
-    printf("Erreur du getsockname 1\n");
+    printf("Erreur du getsockname \n");
     raise(SIGINT);
   }
 
@@ -390,7 +383,7 @@ int main(int argc, char* argv[]) // serveur
     printf("J'attend un client\n");
     c->dSC = accept(dS1, (struct sockaddr*) &(c->aC), &(c->lg)); // accepter la connexion client
     if (c->dSC < 0)
-    {//gere les erreurs
+    { //gere les erreurs
       perror("Serveur : Accept ");
       raise(SIGINT);
     }
@@ -402,11 +395,16 @@ int main(int argc, char* argv[]) // serveur
     int taille = recv(c->dSC, c->pseudo, taillePseudoMax,0);
     if (taille < 0)
     { //gestion des erreurs
-      perror("Serveur : Pseudo : recv -1 ");
+      perror("Pseudo : recv -1 ");
     }
-    else if (taille == 0)
+    else if (taille == 0)//recu un pseudo vide de la part de ce client
     {
-      perror("Serveur : Pseudo : recv 0 ");
+      perror("Pseudo : recv 0 ");     
+    }
+    else if (taille == 1)//Le pseudo est juste "\0", pas de char
+    {
+      printf("Ce client est anonyme, il est renommé Anon%d\n",c->id);
+      sprintf(c->pseudo,"Anon%d",c->id); 
     }
 
     //envoie le port du dest au dest (pour ouvrir le bon UDP)
@@ -414,8 +412,7 @@ int main(int argc, char* argv[]) // serveur
 	  
     printf("Addresse : %s : %d \n", inet_ntoa(c->aC.sin_addr), ntohs(c->aC.sin_port));
 	  
-    rep = send( c->dSC, &(c->aC), sizeof(struct sockaddr_in), 0); // ce send ne marche pas ?
-	  
+    rep = send( c->dSC, &(c->aC), sizeof(struct sockaddr_in), 0); 	  
     if (rep < 0)//gestion des erreurs
     {
       perror("Serveur : thread : send -1 ");
@@ -427,7 +424,11 @@ int main(int argc, char* argv[]) // serveur
 
     //lance dans thread avec ce client
     
-    pthread_create(&(c->thread),0,&broadcast,(void*)c);
+    taille = pthread_create(&(c->thread),0,&broadcast,(void*)c);
+    if (taille < 0)
+    {
+      perror("Creation Thread Client actuel ");
+    }
     
   }
 
