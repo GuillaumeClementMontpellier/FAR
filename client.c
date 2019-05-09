@@ -308,6 +308,8 @@ void *recevoir_t()
     }
     
   }
+
+  raise(SIGUSR1);
     
 }
 void *envoyer_t()
@@ -405,11 +407,15 @@ void *envoyer_t()
     }
      
   }
+
+  raise(SIGUSR1);
+  
 }
 
 void fin ()
 {
   close(dS);
+  close(dSRec);
   exit(0);
 }
 
@@ -508,9 +514,66 @@ int main(int argc, char* argv[]) // client
     perror("bind UDP ");
     exit(0);
   }
-    
-  //Communiquer
+  
   printf("\n\n-------------------Bienvenue dans cette messagerie-------------------\n\n");
+
+  //recoit nombre de salons
+  int nbrSalon = 0;
+  rep = recv( dS, &nbrSalon, sizeof(int), 0); 
+  if (rep < 0)
+  { //gestion des erreurs
+    perror("Recevoir size salon : recv -1 ");
+    exit(0);
+  }
+  else if (rep == 0)
+  {
+    perror("Recevoir size salon : recv 0 ");
+    exit(0);
+  }
+  printf("Il y a %d salons disponibles : entre 0 et %d\n",nbrSalon ,nbrSalon-1 );
+
+  //recoit le nombre de clients par salons
+  int popSalon = 0;
+  for(int i = 0; i < nbrSalon; i++ )
+  {
+    rep = recv( dS, &popSalon, sizeof(int), 0); 
+    if (rep < 0)
+    { //gestion des erreurs
+      perror("Recevoir salon : recv -1 ");
+      exit(0);
+    }
+    else if (rep == 0)
+    {
+      perror("Recevoir salon : recv 0 ");
+      exit(0);
+    }
+    printf("Le salon %d a %d personnes\n",i,popSalon);
+  }
+
+  //choisi un salon
+  int salonChoisi = -1;
+
+  printf("Choississez un salon : ");
+  scanf("%d", &salonChoisi);
+
+  while(salonChoisi < 0 || salonChoisi >= nbrSalon)
+  {
+    printf("Choississez un salon entre 0 et %d : ",nbrSalon - 1);
+    scanf("%d", &salonChoisi); 
+  }
+
+  //envoie le salon choisi
+  rep = send(dS, &salonChoisi, sizeof(int),0);
+  if (rep < 0)//gestion des erreurs
+  {
+    perror("Send salon -1 ");
+    exit(0);
+  }
+  else if (rep == 0)
+  {
+    perror("Send salon 0 ");
+    exit(0);
+  }    
 
   //Separer la lecture et l'ecriture en fonction, puis les appeler en thread
   
@@ -533,9 +596,10 @@ int main(int argc, char* argv[]) // client
   pthread_join(tRecevoir,0);
   pthread_join(tEnvoyer,0);
 
-  printf("Ce message n'est pas censé s'afficher\n");
+  printf("Salon pas valide\n");
   
   close(dS);
+  close(dSRec);
 
   return -1;
   

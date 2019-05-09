@@ -27,6 +27,8 @@ int tailleMax;
 
 int taillePseudoMax;
 
+int nombreSalon;
+
 // Id incremente a chaque ajout de client
 
 int id;
@@ -40,54 +42,36 @@ struct client
   struct client *pere;
   struct client *fils;
 
+  int salon;
+
   char *pseudo;
     
   pthread_t thread;
   
-} *c = NULL; // c est la tete de liste, et correspond à un client pas encore connecte
+} *ctemp;
 
-struct client *ajouteClientViergeDebut(struct client *c1)
+struct client** salons; // c est la tete de liste, et correspond à un client pas encore connecte
+
+void efface(struct client *cl)//efface le client
 {
-  /*  Prend un pointeur vers un client c (qui est le debut de la liste),
-      Crée un nouveau client c2 (malloc),
-      le chaine avant le client c, 
-      et renvoie l'adresse du nouveau client
-   */
-
-  struct client *c2 = (struct client*) malloc(sizeof(struct client));
-
-  c2->dSC = -1;
-  c2->id = id;
-  c2->lg = sizeof(struct sockaddr_in);
-  c2->fils = c1;
-  c2->pere = NULL;
-
-  if(c1 != NULL)
-  {
-    c1->pere = c2;
-  }
-
-  id++;
-
-  return c2;
-  
-}
-
-void efface(struct client *cl)
-{
-  printf("Efface %s : id %d\n",cl->pseudo,cl->id);
+  printf("Efface %s : id %d\n", cl->pseudo, cl->id);
 
   //mutex lock
   pthread_mutex_lock(&mu);
   
-  //Enleve de la liste / dechaine
-  if(cl->fils != NULL)
+  //Enleve de la liste / dechaine et rechaine
+  if(cl->fils != NULL)//si on n'est pas la fin de la liste
   {
     cl->fils->pere = cl->pere;
   }
-  if(cl->pere != NULL)
+  
+  if(cl->pere != NULL)//si on est pas le pere de tout les clients de ce serveur
   {
     cl->pere->fils = cl->fils;
+  }
+  else // si on est le 1er du serveur
+  {
+    salons[cl->salon] = cl->fils;
   }
 
   //mutex unlock
@@ -101,9 +85,8 @@ void efface(struct client *cl)
   free(cl);
 }
 
-void effaceClients(struct client *cl)//efface tout les clients 1 par 1
+void nettoieSalon(struct client *cl)//efface tout les clients 1 par 1 du salon, a partir de ce client
 {
-  printf("Nettoyage de tout les clients\n");
   
   struct client *cSuivant;
   
@@ -118,21 +101,53 @@ void effaceClients(struct client *cl)//efface tout les clients 1 par 1
   
 }
 
+void effaceClients()
+{
+  for (int i = 0; i < nombreSalon; i++)
+  {
+    printf("Nettoyage de tout les clients du salon %d\n",i);
+    nettoieSalon(salons[i]);
+  }
+
+  free(salons);
+}
+
 void fin() //FONCTION QUI TRAITE LES CTRL+C
 {
   printf("\n Au revoir \n");
   
   // Fermer tout les dsc des clients (liste)
-  effaceClients(c);
+  effaceClients();
   
   // Fermer le serveur
   close(dS1);
   exit(0);
+  
+}
+
+void insereClientDebutSalon(struct client **c)
+{ // insere le client au debut du salon precisé dans client->salon
+  // Data : adresse du client a inserer au debut du salon
+  // Process : insere le client au debut du salon qu''il a demandé
+  // Resultat : ne retourne rien
+  
+  pthread_mutex_lock(&mu);
+
+  (*c)->fils = salons[(*c)->salon];
+
+  salons[(*c)->salon] = *c;
+
+  if( (*c)->fils != NULL)
+  {
+    (*c)->fils->pere = (*c);
+  }
+  
+  pthread_mutex_unlock(&mu);
+
 }
 
 void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout les autres clients, ce en boucle
 {
-
   struct client *cActif = (struct client*)cl;
   
   int taille;
@@ -143,6 +158,30 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
   int fini = 0;
 
   printf("Debut Thread %s\n",cActif->pseudo);
+
+  // recoit le salon dont le client veut faire partie
+  taille = recv(cActif->dSC, &(cActif->salon), sizeof(int), 0);
+  if (taille < 0)
+  { //gestion des erreurs
+    perror("Serveur : Thread : recv -1 ");
+    fini = 1;
+  }
+  else if (taille == 0)
+  {
+    perror("Serveur : Thread : recv 0 ");
+    fini = 1;
+  }
+
+  // assigne le client au salon correspondant si valide
+  if(cActif->salon >= 0 && cActif->salon < nombreSalon)
+  {    
+    insereClientDebutSalon(&cActif);
+  }
+  else //quitte sinon
+  {
+    printf("%s demande un salon non valide",cActif->pseudo);
+    fini = 1;
+  }
   
   while(fini == 0)
   {
@@ -181,7 +220,7 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
 
 	// On recherche s'il y a un client avec ce pseudo
 	int trouve = 0;
-	struct client *cDest = c->fils;
+	struct client *cDest = salons[cActif->salon];
 
 	printf("recherche si %s existe\n",msg);
 	
@@ -274,7 +313,7 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
 
       //Pour chaque autre client :
 
-      struct client *cDest = c->fils;
+      struct client *cDest = salons[cActif->salon];
 
       while(cDest != NULL && fini == 0)
       {
@@ -304,6 +343,7 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
     }
     
   }
+  
   // Fini : enlever le client de la liste, ferme son port (dans efface()) puis free la memoire
   
   efface(cActif);
@@ -315,16 +355,67 @@ void *broadcast(void* cl) // recoit un message d'un client, et le diffuse a tout
   return 0;
 }
 
+struct client *clientVierge()
+{
+  /*  Crée un nouveau client, avec un id et pas d'adresse
+   */
+
+  struct client *c2 = (struct client*) malloc(sizeof(struct client));
+
+  c2->dSC = -1;
+  c2->id = id;
+  c2->lg = sizeof(struct sockaddr_in);
+  c2->salon = 0;
+
+  c2->pere = NULL;
+  c2->fils = NULL;
+
+  id++;
+
+  return c2;
+  
+}
+
+int nombreClients(struct client *client)// compte le nombre de clients dans ce salon
+{
+  
+  if (client != NULL)
+  {
+    return 1 + nombreClients(client->fils);
+  }
+  else
+  {
+    return 0;
+  }
+  
+}
 
 int main(int argc, char* argv[]) // serveur
-{  
+{
+  if(argc < 2)
+  {
+    printf("Probleme de lancement\nUsage: ./serveur \"nbrSalons\"");
+    exit(0);
+  }
+  
   signal(SIGINT,fin);
 
   pthread_mutex_init(&mu,NULL);
   
   tailleMax = 2000;
 
-  taillePseudoMax = 50;		 
+  taillePseudoMax = 50;
+
+  nombreSalon = atoi(argv[1]);
+
+  printf("Initiation des %d salons\n",nombreSalon);
+
+  salons = (struct client**) malloc(nombreSalon * sizeof(struct client *));
+
+  for(int i = 0; i < nombreSalon; i++)
+  {
+    salons[i] = NULL;
+  }
 
   id = 0;  
   
@@ -371,28 +462,23 @@ int main(int argc, char* argv[]) // serveur
   
   while(1)
   {
-    //crée un nouveau client au debut de la liste
-
-    pthread_mutex_lock(&mu);
-    
-    c = ajouteClientViergeDebut(c);
-    
-    pthread_mutex_unlock(&mu);
+    //crée un nouveau client
+    ctemp = clientVierge();
     
     //attendre un nouveau client
     printf("J'attend un client\n");
-    c->dSC = accept(dS1, (struct sockaddr*) &(c->aC), &(c->lg)); // accepter la connexion client
-    if (c->dSC < 0)
+    ctemp->dSC = accept(dS1, (struct sockaddr*) &(ctemp->aC), &(ctemp->lg)); // accepter la connexion client
+    if (ctemp->dSC < 0)
     { //gere les erreurs
       perror("Serveur : Accept ");
       raise(SIGINT);
     }
 
     //recevoir pseudo
-    c->pseudo = (char*) malloc((taillePseudoMax+1) * sizeof(char));
-    c->pseudo[taillePseudoMax] = '\0';
+    ctemp->pseudo = (char*) malloc((taillePseudoMax+1) * sizeof(char));
+    ctemp->pseudo[taillePseudoMax] = '\0';
     
-    int taille = recv(c->dSC, c->pseudo, taillePseudoMax,0);
+    int taille = recv(ctemp->dSC, ctemp->pseudo, taillePseudoMax,0);
     if (taille < 0)
     { //gestion des erreurs
       perror("Pseudo : recv -1 ");
@@ -403,16 +489,16 @@ int main(int argc, char* argv[]) // serveur
     }
     else if (taille == 1)//Le pseudo est juste "\0", pas de char
     {
-      printf("Ce client est anonyme, il est renommé Anon%d\n",c->id);
-      sprintf(c->pseudo,"Anon%d",c->id); 
+      printf("Ce client est anonyme, il est renommé Anon%d\n",ctemp->id);
+      sprintf(ctemp->pseudo,"Anon%d",ctemp->id); 
     }
 
     //envoie le port du dest au dest (pour ouvrir le bon UDP)
-    printf("Envoie addr de %s a lui même\n",c->pseudo );
+    printf("Envoie addr de %s a lui même\n",ctemp->pseudo );
 	  
-    printf("Addresse : %s : %d \n", inet_ntoa(c->aC.sin_addr), ntohs(c->aC.sin_port));
+    printf("Addresse : %s : %d \n", inet_ntoa(ctemp->aC.sin_addr), ntohs(ctemp->aC.sin_port));
 	  
-    rep = send( c->dSC, &(c->aC), sizeof(struct sockaddr_in), 0); 	  
+    rep = send( ctemp->dSC, &(ctemp->aC), sizeof(struct sockaddr_in), 0); 	  
     if (rep < 0)//gestion des erreurs
     {
       perror("Serveur : thread : send -1 ");
@@ -422,9 +508,38 @@ int main(int argc, char* argv[]) // serveur
       perror("Serveur : thread : send 0 ");
     }
 
+    //envoie le nombre de salons au client
+    rep = send( ctemp->dSC, &nombreSalon, sizeof(int), 0); 	  
+    if (rep < 0)//gestion des erreurs
+    {
+      perror("Serveur : thread : send -1 nbrSalon");
+    }
+    else if (rep == 0)
+    {
+      perror("Serveur : thread : send 0 nbrSalon");
+    }
+
+    //pour chaque salon, envoi le nombre de clients(facultatif)
+    int cmp = 0;
+    for(int i = 0; i < nombreSalon; i++)
+    {
+      cmp = nombreClients(salons[i]);
+      
+      rep = send( ctemp->dSC, &cmp, sizeof(int), 0); 	  
+      if (rep < 0)//gestion des erreurs
+      {
+	perror("Serveur : thread : send -1 nbrSalon");
+      }
+      else if (rep == 0)
+      {
+	perror("Serveur : thread : send 0 nbrSalon");
+      }
+      
+    }
+
     //lance dans thread avec ce client
     
-    taille = pthread_create(&(c->thread),0,&broadcast,(void*)c);
+    taille = pthread_create(&(ctemp->thread),0,&broadcast,(void*)ctemp);
     if (taille < 0)
     {
       perror("Creation Thread Client actuel ");
